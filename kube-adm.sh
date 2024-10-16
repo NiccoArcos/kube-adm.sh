@@ -1,5 +1,5 @@
 #!/bin/bash
-
+#Prueba para git
 #Colores para la salida en consola
 
 GREEN='\033[0;32m'
