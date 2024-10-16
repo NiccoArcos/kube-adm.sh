@@ -323,13 +323,6 @@ EOF
 fi
 
 
-
-
-
-
-
-
-
 echo "=========================================================================================================="
 info "\033[1mTAREA 6 INSTALAR CONTAINERD: \033[0m"
 info "\033[4mSubtarea en ejecución: Instalando yum-utils... \033[0m"
@@ -373,7 +366,22 @@ else
 fi
 
 
+info "\033[4mSubtarea en ejecución: Instalación de Containerd... \033[0m"
+info "Verificando si containerd esta instalado..."
 
+if rpm -q containerd.io > /dev/null 2>&1; then
+	info "El container runtime "containerd" se encuentra instalado en el sistema. No se ejecutará acción de instalación."
+
+else
+	info "El container runtime "containerd" no se encuentra instalado... se procederá a instalarlo."
+	yum install -y containerd
+
+	if rpm -q containerd.io > /dev/null 2>&1; then
+		success "El container runtime fue instalado con éxito..."
+	fi
+
+fi
+	
 
 
 
