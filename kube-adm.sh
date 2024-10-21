@@ -47,7 +47,7 @@ info "Verificando si hay paquetes disponibles para actualizar..."
 if yum check-update | grep -q "Packages"; then
 	info "Las dependencias no estan actualizadas, se procede a realizar la actualizacion de las mismas..."
 	yum update -y && yum upgrade -y
-	if [$? eq 0 ]; then
+	if [ $? eq 0 ]; then
 		success "El sistema ha sido actualizado correctamente..."
 	
 	else
@@ -382,6 +382,51 @@ else
 
 fi
 	
+
+
+info "\033[4mSubtarea en ejecución: Configuración de config.toml... \033[0m"
+config_toml=/etc/containerd/config.toml
+
+sudo  cp "$config_toml" /etc/containerd/config.toml.bkp
+sudo containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+
+
+
+# Verificar si la línea SystemdCgroup existe, ignorando espacios e indentaciones
+if grep -q "^[[:space:]]*SystemdCgroup" "$config_toml"; then
+    info "➜ La línea 'SystemdCgroup' existe en el archivo, cambiando su valor de false por true..."
+    
+    sudo sed -i 's/^\([[:space:]]*SystemdCgroup *= *\).*/\1true/' "$config_toml"
+    
+    # Visualizar el valor actualizado de la línea SystemdCgroup
+    visualizar_SystemdCgroup=$(grep "^[[:space:]]*SystemdCgroup" "$config_toml")
+
+    # Mostrar el valor actualizado
+    success "Visualizando valor de la variable: $visualizar_SystemdCgroup"
+else
+    error "La línea 'SystemdCgroup' no se encontró en el archivo."
+fi
+
+
+info "Habilitando y reinciando containerd..."
+
+systemctl enable containerd
+systemctl restart containerd
+
+estado_gral=$(systemctl status containerd)
+estado_container=$(echo "$estado_gral" | grep -i "Active:")
+
+if echo "$estado_container" | grep -q "active"; then
+	success "El container runtime se encuentra activo y habilitado"
+
+else
+	error "el container runtime no se encuentra activo"
+
+fi
+
+
+    
+
 
 
 
