@@ -394,7 +394,7 @@ sudo containerd config default | sudo tee /etc/containerd/config.toml > /dev/nul
 
 # Verificar si la línea SystemdCgroup existe, ignorando espacios e indentaciones
 if grep -q "^[[:space:]]*SystemdCgroup" "$config_toml"; then
-    info "➜ La línea 'SystemdCgroup' existe en el archivo, cambiando su valor de false por true..."
+    info "La línea 'SystemdCgroup' existe en el archivo, cambiando su valor de false por true..."
     
     sudo sed -i 's/^\([[:space:]]*SystemdCgroup *= *\).*/\1true/' "$config_toml"
     
@@ -403,6 +403,7 @@ if grep -q "^[[:space:]]*SystemdCgroup" "$config_toml"; then
 
     # Mostrar el valor actualizado
     success "Visualizando valor de la variable: $visualizar_SystemdCgroup"
+
 else
     error "La línea 'SystemdCgroup' no se encontró en el archivo."
 fi
@@ -427,50 +428,43 @@ fi
 
     
 
+echo "=========================================================================================================="
+info "\033[1mTAREA 7 CONFIGURAR REPOSITORIO DE KUBERNETES: \033[0m"
+info "\033[4mSubtarea en ejecución: Configurando repositorio de Kubernetes... \033[0m"
+
+ruta_repo_k8s=/etc/yum.repos.d/kubernetes.repo
+
+info "Verficando si el archivo existe..."
+if [ -f "$ruta_repo_k8s" ]; then
+	info "El archivo existe"
+	info "Verificando si el archivo tiene contenido..."
+	contenido_repo_k8s=$(cat /etc/yum.repos.d/kubernetes.repo)
+	if [ -n "$ruta_repo_k8s" ]; then
+		success "El contenido del repositorio es:"
+		echo "El contenido del repositorio es: "$contenido_repo_k8s""
+	fi
 
 
 
+else
+	info "El archivo no existe se procede a crearlo y configurarlo"
+	cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:
+/v1.28/rpm/repodata/repomd.xml.key
+exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+EOF
+	if [ -n "$ruta_repo_k8s" ]; then
+		success "Archivo creado con exito"
+		echo "Contiene: "$contenido_repo_k8s""
+	fi
+
+fi
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+info "\033[4mSubtarea en ejecución: Desplegando lista de repositorios cargados en el servidor... \033[0m"
+dnf repolist
