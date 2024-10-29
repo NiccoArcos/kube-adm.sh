@@ -66,7 +66,7 @@ fi
 
 #Cambiar el nombre del hostname para el Control Plain
 echo "=========================================================================================================="
-info "TAREA 2: CAMBIAR HOSTNAME Y CONFIGURAR ARCHIVO HOSTS PARA EL CLUSTER"
+info "TAREA 2: CAMBIAR HOSTNAME, CREAR USUARIO DE SERVICIO KUBERNETES  Y CONFIGURAR ARCHIVO HOSTS PARA EL CLUSTER"
 info "\033[4mSubtarea en ejecución: Cambio de hostname...\033[0m"
 info "Nombre del host actual: $(hostname)"
 nuevo_hostname="master"
@@ -74,6 +74,33 @@ sudo hostnamectl set-hostname "$nuevo_hostname"
 success "Nombre del host cambiado a: $(hostname)"
 
 #Direcciones IPs de nodos y maestros |  hostsnames al archivo /etc/hosts
+
+info "\033[4mSubtarea en ejecución: Creación de usuario de servicio Kubernetes...\033[0m"
+
+usuario_servicio="kubernetes"
+if id "$usuario_servicio" &>/dev/null; then
+	info "el usuario de servicio Kubernetes existe, no se creara nuevamente".
+
+else
+	info "el usuario de servicio Kubernetes no existe. Se procede a crearlo"
+	useradd -m -d /home/kubernetes -s /bin/bash "$usuario_servicio" 
+	info "estableciendo contraseña"
+	echo "kubernetes:nico" | sudo chpasswd
+
+
+fi
+
+verificacion_usuario_kubernetes=$(cat /etc/passwd | grep kubernetes)
+
+if "$verificacion_usuario_kubernetes" 
+
+
+
+
+
+
+
+
 info "\033[4mSubtarea en ejeución: Agregado de Hosts e IPs en archivo /etc/hosts\033[0m"
 
 ip_addresses=("192.168.100.52" "192.168.100.53" "192.168.100.93")
@@ -429,7 +456,7 @@ fi
     
 
 echo "=========================================================================================================="
-info "\033[1mTAREA 7 CONFIGURAR REPOSITORIO DE KUBERNETES: \033[0m"
+info "\033[1mTAREA 7: CONFIGURAR REPOSITORIO DE KUBERNETES: \033[0m"
 info "\033[4mSubtarea en ejecución: Configurando repositorio de Kubernetes... \033[0m"
 
 ruta_repo_k8s=/etc/yum.repos.d/kubernetes.repo
@@ -454,8 +481,7 @@ name=Kubernetes
 baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm
 enabled=1
 gpgcheck=1
-gpgkey=https://pkgs.k8s.io/core:/stable:
-/v1.28/rpm/repodata/repomd.xml.key
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
 exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
 EOF
 	if [ -n "$ruta_repo_k8s" ]; then
@@ -468,3 +494,138 @@ fi
 
 info "\033[4mSubtarea en ejecución: Desplegando lista de repositorios cargados en el servidor... \033[0m"
 dnf repolist
+
+
+if dnf repolist | grep -i "kubernetes"; then
+	success "el repositorio kubernetes se encuentra instalado y configurado en el servidor."
+fi
+
+
+
+
+echo "=========================================================================================================="
+info "\033[1mTAREA 8: Instalar Kubeadm, Kubectl y Kubelet \033[0m"
+info "\033[4mSubtarea en ejecución: Verificando si Kubeadm, Kubectl y Kubelet estan instalados en el equipo... \033[0m"
+
+
+chequeo_paquetes_instalados(){
+	local nombre_paquete="$1"
+	if rpm -q "$nombre_paquete" >/dev/null 2>&1; then
+		info "El paquete "$nombre_paquete" esta instalado"
+		return 0
+	
+	
+	else
+		info "El paquete "$nombre_paquete" no esta instalado"
+		return 1
+
+
+	fi
+}
+
+chequeo_paquetes_instalados "kubeadm"
+KUBEADM_STATUS=$?
+
+chequeo_paquetes_instalados "kubelet"
+KUBELET_STATUS=$?
+
+chequeo_paquetes_instalados "kubectl"
+KUBECTL_STATUS=$?
+
+if [[ "$KUBEADM_STATUS" -eq 0 ]] && [[ "$KUBELET_STATUS" -eq 0 ]] && [[ "$KUBECTL_STATUS" -eq 0 ]]; then
+	info "Los paquetes Kubeadm, Kubelet y Kubectl estan instalados. No se realizará acción de instalación..."
+
+
+
+else
+	info " Los paquetes Kubeadm, Kubelet y Kubectl estan desinstalados. Se procede a realizar su instalación..."
+	yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+
+	if [[ "$KUBEADM_STATUS" -eq 0 ]] && [[ "$KUBELET_STATUS" -eq 0 ]] && [[ "$KUBECTL_STATUS" -eq 0 ]]; then
+		success "los paquetes se instalaron de manera exitosa."
+		if rpm -q "$nombre_paquete" >/dev/null 2>&1; then
+			success "El paquete "$nombre_paquete" esta instalado."
+		fi
+	fi
+
+fi
+
+info "\033[4mSubtarea en ejecución: Disponibilizando y reiniciando servicio Kubelet... \033[0m"
+systemctl enable kubelet
+systemctl restart kubelet
+
+info "\033[4mSubtarea en ejecución: Verificando status ... \033[0m"
+estado_gral_kubelet=$(systemctl status kubelet)
+estado_kubelet=$(echo "$estado_gral_kubelet" | grep -i "Active:")
+if echo "$estado_kubelet" | grep -i "active"; then
+	success "El servicio kubelet se encuentra activo"
+
+		
+
+
+else
+	error "El servicio kubelet no se encuentra activo, revise el estado del servicio"
+
+fi
+
+echo "=========================================================================================================="
+info "\033[1mTAREA 9: Inicializando cluster Kubernetes | Kubeadm init... \033[0m"
+kubeadm init --control-plane-endpoint=master
+
+
+info "\033[4mSubtarea en ejecución: Cambiando a usuario de servicio kubernetes ejecutando comandos de configuracion... \033[0m"
+su - kubernetes -c '
+	sudo -u kubernetes mkdir -p $HOME/.kube
+	sudo -u kubernetes cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+	sudo -u kubernetes chown $(id -u kubernetes):$(id -g kubernetes) $HOME/.kube/config
+'
+
+
+
+info "\033[4mSubtarea en ejecución: Verificando nodos de Cluster Kubernetes \033[0m"
+su - kubernetes -c 'kubectl get nodes'
+
+
+
+echo "=========================================================================================================="
+info "\033[1mTAREA 10: Instalacion de CNI Calico... \033[0m"
+info "\033[4mSubtarea en ejecución: Instalando CNI... \033[0m"
+kubectl apply - f https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/calico.yaml
+
+
+
+info "\033[4mSubtarea en ejecución: Verificación de los pods de calico luego de la instalación... \033[0m"
+
+
+check_calico_pods() {
+	info "Chequeando pods"
+	
+
+	for i in {1..10}; do
+		calico_status=$(kubectl get pods -n kube-system -l k8s-app=calico-node -o jsonpath='{.items[*].status.phase}')
+
+		if [[ $calico_status =~ "Running" ]]; then
+			success "Los pods de calico estan en estado Running y listos para trabajar"
+			return 0
+
+		else
+			info "Intento $i: Algunos pods no estan listos. Esperando 10 segundos"
+			sleep 10
+		fi
+	done
+	
+	error 'Algunos pods no estan en estado Running despues de multiples intentos de iniciarlos. Revisar logs'
+	return 1
+}
+
+check_calico_pods
+
+
+
+echo "=========================================================================================================="
+info "\033[1mTAREA 12:  Asignación de roles a nodos... \033[0m"
+
+
+
+
+
