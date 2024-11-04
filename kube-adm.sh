@@ -47,7 +47,7 @@ info "Verificando si hay paquetes disponibles para actualizar..."
 if yum check-update | grep -q "Packages"; then
 	info "Las dependencias no estan actualizadas, se procede a realizar la actualizacion de las mismas..."
 	yum update -y && yum upgrade -y
-	if [ $? eq 0 ]; then
+	if [ $? -eq 0 ]; then
 		success "El sistema ha sido actualizado correctamente..."
 	
 	else
@@ -79,52 +79,41 @@ info "\033[4mSubtarea en ejecución: Creación de usuario de servicio Kubernetes
 
 usuario_servicio="kubernetes"
 if id "$usuario_servicio" &>/dev/null; then
-	info "el usuario de servicio Kubernetes existe, no se creara nuevamente".
-
+    info "El usuario de servicio Kubernetes existe, no se creará nuevamente."
 else
-	info "el usuario de servicio Kubernetes no existe. Se procede a crearlo"
-	useradd -m -d /home/kubernetes -s /bin/bash "$usuario_servicio" 
-	info "estableciendo contraseña"
-	echo "kubernetes:nico" | sudo chpasswd
-
-
+    info "El usuario de servicio Kubernetes no existe. Se procede a crearlo."
+    useradd -m -d /home/kubernetes -s /bin/bash "$usuario_servicio"
+    info "Estableciendo contraseña"
+    echo "kubernetes:nico" | sudo chpasswd
 fi
 
-verificacion_usuario_kubernetes=$(cat /etc/passwd | grep kubernetes)
+# Verificación de la creación del usuario 'kubernetes'
+if grep -q "^kubernetes:" /etc/passwd; then
+    success "El usuario de servicio Kubernetes se ha verificado correctamente."
+else
+    info "Error: No se pudo verificar la existencia del usuario de servicio Kubernetes."
+fi
 
-if "$verificacion_usuario_kubernetes" 
+info "\033[4mSubtarea en ejecución: Agregado de Hosts e IPs en archivo /etc/hosts\033[0m"
 
-
-
-
-
-
-
-
-info "\033[4mSubtarea en ejeución: Agregado de Hosts e IPs en archivo /etc/hosts\033[0m"
-
-ip_addresses=("192.168.100.52" "192.168.100.53" "192.168.100.93")
-hosts_names=("master" "worker01" "worker02")
+ip_addresses=("192.168.100.52" "192.168.100.53" "192.168.100.93" "192.168.100.96" "192.168.100.97" "192.168.100.98")
+hosts_names=("master" "worker01" "worker02" "master02" "worker02-ext-dc02" "worker01-int-dc02")
 
 agregar_hosts() {
-	local ip_addres="$1"
-	local host_name="$2"
+    local ip_address="$1"
+    local host_name="$2"
 
-	if grep -qw "$ip_addres"  /etc/hosts && grep -qw "$host_name" /etc/hosts; then
-		 info " El host ${ip_address} está agregado en el archivo. Nada que hacer..."
-	
-	else
-		echo "$ip_addres $host_name" | sudo tee -a /etc/hosts > /dev/null
-		success "El Host : $host_name | De Ip Adrress: $ip_addres | fué agregado con éxito "
+    if grep -qw "$ip_address" /etc/hosts && grep -qw "$host_name" /etc/hosts; then
+        info "El host $host_name con IP $ip_address ya está agregado en el archivo /etc/hosts. Nada que hacer..."
+    else
+        echo "$ip_address $host_name" | sudo tee -a /etc/hosts > /dev/null
+        success "El Host: $host_name | De IP Address: $ip_address fue agregado con éxito."
+    fi
+}
 
-
-
-	fi
-}	
-
-# Iterar sobre los hosts
-for i in "${!ip_addresses[@]}"; do
-	agregar_hosts "${ip_addresses[$i]}" "${hosts_names[$i]}"
+# Iteración para agregar IPs y nombres de host al archivo /etc/hosts
+for ((i=0; i<${#ip_addresses[@]}; i++)); do
+    agregar_hosts "${ip_addresses[i]}" "${hosts_names[i]}"
 done
 
 
@@ -572,15 +561,15 @@ echo "==========================================================================
 info "\033[1mTAREA 9: Inicializando cluster Kubernetes | Kubeadm init... \033[0m"
 kubeadm init --control-plane-endpoint=master
 
-
-info "\033[4mSubtarea en ejecución: Cambiando a usuario de servicio kubernetes ejecutando comandos de configuracion... \033[0m"
+info "\033[4mSubtarea en ejecución: Archivo de configuracion de kubernetes e instalacion de CNI Calico... \033[0m"
 su - kubernetes -c '
-	sudo -u kubernetes mkdir -p $HOME/.kube
-	sudo -u kubernetes cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
-	sudo -u kubernetes chown $(id -u kubernetes):$(id -g kubernetes) $HOME/.kube/config
+    mkdir -p $HOME/.kube
+    sudo cp -f /etc/kubernetes/admin.conf $HOME/.kube/config
+    sudo chown $(id -u):$(id -g) $HOME/.kube/config
+    export KUBECONFIG=/home/kubernetes/.kube/config
+    kubectl get nodes
+    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/calico.yaml
 '
-
-
 
 info "\033[4mSubtarea en ejecución: Verificando nodos de Cluster Kubernetes \033[0m"
 su - kubernetes -c 'kubectl get nodes'
@@ -588,17 +577,14 @@ su - kubernetes -c 'kubectl get nodes'
 
 
 echo "=========================================================================================================="
-info "\033[1mTAREA 10: Instalacion de CNI Calico... \033[0m"
-info "\033[4mSubtarea en ejecución: Instalando CNI... \033[0m"
-kubectl apply - f https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/calico.yaml
-
-
+info "\033[1mTAREA 10: Verificacion de CNI Calico... \033[0m"
 
 info "\033[4mSubtarea en ejecución: Verificación de los pods de calico luego de la instalación... \033[0m"
 
 
 check_calico_pods() {
 	info "Chequeando pods"
+	export KUBECONFIG=/home/kubernetes/.kube/config
 	
 
 	for i in {1..10}; do
@@ -623,9 +609,78 @@ check_calico_pods
 
 
 echo "=========================================================================================================="
-info "\033[1mTAREA 12:  Asignación de roles a nodos... \033[0m"
+info "\033[1mTAREA 11: Union de nodos al Cluster de Kubernetes... \033[0m"
+SSH_USER="kubernetes"
+
+info "\033[4mSubtarea en ejecución: Configurando llaves ssh para usuario Kubernetes... \033[0m"
+cat /root/.ssh/id_rsa.pub | ssh kubernetes@192.168.100.93 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys'
+ssh kubernetes@192.168.100.93 'chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys'
+
+cat /root/.ssh/id_rsa.pub | ssh kubernetes@192.168.100.96 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys'
+ssh kubernetes@192.168.100.96 'chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys'
+
+cat /root/.ssh/id_rsa.pub | ssh kubernetes@192.168.100.97 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys'
+ssh kubernetes@192.168.100.97 'chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys'
+
+cat /root/.ssh/id_rsa.pub | ssh kubernetes@192.168.100.98 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys'
+ssh kubernetes@192.168.100.98 'chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys'
+
+
+API_SERVER="192.168.100.52:6443"
+CONTROL_NODES=("192.168.100.96")
+WORKER_NODES=("192.168.100.53" "192.168.100.93" "192.168.100.97" "192.168.100.98")
+
+export KUBECONFIG=/home/kubernetes/.kube/config
+# Genera el token y el hash en el nodo principal del Control Plane
+
+TOKEN=$(kubeadm token create)
+HASH=$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //')
+
+
+# Obtén el certificado para Control Plane (solo si vas a agregar nodos Control Plane)
+CERTIFICATE_KEY=$(kubeadm init phase upload-certs --upload-certs)
+
+# Comando de unión para nodos worker
+JOIN_CMD_WORKER="kubeadm join $API_SERVER --token $TOKEN --discovery-token-ca-cert-hash sha256:$HASH"
+
+# Comando de unión para nodos Control Plane
+JOIN_CMD_CONTROL="kubeadm join $API_SERVER --token $TOKEN --discovery-token-ca-cert-hash sha256:$HASH --control-plane --certificate-key $CERTIFICATE_KEY"
 
 
 
+# Función para unir nodos usando SSH
+join_node() {
+    NODE_IP=$1
+    JOIN_CMD=$2
+    echo "Uniendo el nodo $NODE_IP al clúster..."
+
+    ssh -o StrictHostKeyChecking=no "$SSH_USER@$NODE_IP" "$JOIN_CMD"
+    if [ $? -eq 0 ]; then
+        echo "El nodo $NODE_IP se unió al clúster con éxito."
+    else
+        echo "Error al unir el nodo $NODE_IP."
+    fi
+}
+
+# Unión de nodos Control Plane
+for NODE_IP in "${CONTROL_NODES[@]}"; do
+    join_node "$NODE_IP" "$JOIN_CMD_CONTROL"
+done
+
+# Unión de nodos Worker
+for NODE_IP in "${WORKER_NODES[@]}"; do
+    join_node "$NODE_IP" "$JOIN_CMD_WORKER"
+done
 
 
+echo "=========================================================================================================="
+info "\033[1mTAREA 12: Asignar roles a los nodos... \033[0m"
+export KUBECONFIG=/home/kubernetes/.kube/config
+kubectl label node worker01 node-role.kubernetes.io/worker=worker
+kubectl label node worker02 node-role.kubernetes.io/worker=worker
+kubectl label node worker02-ext-dc02 node-role.kubernetes.io/worker=worker
+kubectl label node worker01-int-dc02 node-role.kubernetes.io/worker=worker
+
+info "\033[4mSubtarea en ejecución: Verificando nodos en el cluster... \033[0m"
+export KUBECONFIG=/home/kubernetes/.kube/config
+kubectl get nodes
