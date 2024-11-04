@@ -610,67 +610,75 @@ check_calico_pods
 
 echo "=========================================================================================================="
 info "\033[1mTAREA 11: Union de nodos al Cluster de Kubernetes... \033[0m"
+
 SSH_USER="kubernetes"
-
-info "\033[4mSubtarea en ejecución: Configurando llaves ssh para usuario Kubernetes... \033[0m"
-cat /root/.ssh/id_rsa.pub | ssh kubernetes@192.168.100.93 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys'
-ssh kubernetes@192.168.100.93 'chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys'
-
-cat /root/.ssh/id_rsa.pub | ssh kubernetes@192.168.100.96 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys'
-ssh kubernetes@192.168.100.96 'chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys'
-
-cat /root/.ssh/id_rsa.pub | ssh kubernetes@192.168.100.97 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys'
-ssh kubernetes@192.168.100.97 'chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys'
-
-cat /root/.ssh/id_rsa.pub | ssh kubernetes@192.168.100.98 'mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys'
-ssh kubernetes@192.168.100.98 'chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys'
-
-
 API_SERVER="192.168.100.52:6443"
 CONTROL_NODES=("192.168.100.96")
 WORKER_NODES=("192.168.100.53" "192.168.100.93" "192.168.100.97" "192.168.100.98")
 
 export KUBECONFIG=/home/kubernetes/.kube/config
+
 # Genera el token y el hash en el nodo principal del Control Plane
+echo "Generando token, hash y certificate key en el nodo principal..."
 
-TOKEN=$(kubeadm token create)
+# Verificar que el token se genere correctamente
+TOKEN=$(sudo kubeadm token create)
+if [ -z "$TOKEN" ]; then
+  echo "Error: No se pudo generar el TOKEN."
+  exit 1
+fi
+echo "TOKEN: $TOKEN"
+
+# Verificar que el hash se genere correctamente
 HASH=$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //')
+if [ -z "$HASH" ]; then
+  echo "Error: No se pudo generar el HASH."
+  exit 1
+fi
+echo "HASH: $HASH"
 
+# Verificar que el certificate key se genere correctamente
+CERTIFICATE_KEY=$(sudo kubeadm init phase upload-certs --upload-certs 2>/dev/null | tail -n 1)
+if [ -z "$CERTIFICATE_KEY" ]; then
+  echo "Error: No se pudo generar el CERTIFICATE_KEY."
+  exit 1
+fi
+echo "CERTIFICATE_KEY: $CERTIFICATE_KEY"
 
-# Obtén el certificado para Control Plane (solo si vas a agregar nodos Control Plane)
-CERTIFICATE_KEY=$(kubeadm init phase upload-certs --upload-certs)
-
-# Comando de unión para nodos worker
+# Comando de unión para nodos worker y control plane
 JOIN_CMD_WORKER="kubeadm join $API_SERVER --token $TOKEN --discovery-token-ca-cert-hash sha256:$HASH"
-
-# Comando de unión para nodos Control Plane
 JOIN_CMD_CONTROL="kubeadm join $API_SERVER --token $TOKEN --discovery-token-ca-cert-hash sha256:$HASH --control-plane --certificate-key $CERTIFICATE_KEY"
-
-
 
 # Función para unir nodos usando SSH
 join_node() {
-    NODE_IP=$1
-    JOIN_CMD=$2
-    echo "Uniendo el nodo $NODE_IP al clúster..."
+  NODE_IP=$1
+  JOIN_CMD=$2
+  echo "Uniendo el nodo $NODE_IP al clúster..."
 
-    ssh -o StrictHostKeyChecking=no "$SSH_USER@$NODE_IP" "$JOIN_CMD"
-    if [ $? -eq 0 ]; then
-        echo "El nodo $NODE_IP se unió al clúster con éxito."
-    else
-        echo "Error al unir el nodo $NODE_IP."
+  ssh -o StrictHostKeyChecking=no "$SSH_USER@$NODE_IP" "sudo $JOIN_CMD"
+  if [ $? -eq 0 ]; then
+    echo "El nodo $NODE_IP se unió al clúster con éxito."
+    
+    # Configurar kubeconfig en el nodo actual si es control-plane02
+    if [ "$NODE_IP" == "192.168.100.96" ]; then
+      echo "Configurando kubeconfig en $NODE_IP..."
+      ssh "$SSH_USER@$NODE_IP" "mkdir -p \$HOME/.kube && sudo cp -f /etc/kubernetes/admin.conf \$HOME/.kube/config && sudo chown \$(id -u):\$(id -g) \$HOME/.kube/config"
     fi
+  else
+    echo "Error al unir el nodo $NODE_IP."
+  fi
 }
 
 # Unión de nodos Control Plane
 for NODE_IP in "${CONTROL_NODES[@]}"; do
-    join_node "$NODE_IP" "$JOIN_CMD_CONTROL"
+  join_node "$NODE_IP" "$JOIN_CMD_CONTROL"
 done
 
 # Unión de nodos Worker
 for NODE_IP in "${WORKER_NODES[@]}"; do
-    join_node "$NODE_IP" "$JOIN_CMD_WORKER"
+  join_node "$NODE_IP" "$JOIN_CMD_WORKER"
 done
+
 
 
 echo "=========================================================================================================="
