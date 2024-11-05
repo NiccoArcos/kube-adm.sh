@@ -558,23 +558,32 @@ else
 fi
 
 echo "=========================================================================================================="
+
+echo "=========================================================================================================="
 info "\033[1mTAREA 9: Inicializando cluster Kubernetes | Kubeadm init... \033[0m"
 kubeadm init --control-plane-endpoint=master
 
-info "\033[4mSubtarea en ejecución: Archivo de configuracion de kubernetes e instalacion de CNI Calico... \033[0m"
+info "\033[4mSubtarea en ejecución: Archivo de configuración de Kubernetes e instalación de CNI Calico... \033[0m"
 su - kubernetes -c '
     mkdir -p $HOME/.kube
     sudo cp -f /etc/kubernetes/admin.conf $HOME/.kube/config
     sudo chown $(id -u):$(id -g) $HOME/.kube/config
-    export KUBECONFIG=/home/kubernetes/.kube/config
+    export KUBECONFIG=$HOME/.kube/config
     kubectl get nodes
     kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/calico.yaml
 '
 
-info "\033[4mSubtarea en ejecución: Verificando nodos de Cluster Kubernetes \033[0m"
-su - kubernetes -c 'kubectl get nodes'
+# Copiar admin.conf a control-plane02 y configurar kubectl
+info "\033[1mConfigurando acceso de kubectl en Control Plane02...\033[0m"
+scp /etc/kubernetes/admin.conf kubernetes@192.168.100.96:/home/kubernetes/.kube/config
+ssh kubernetes@192.168.100.96 'sudo chown $(id -u):$(id -g) /home/kubernetes/.kube/config && export KUBECONFIG=/home/kubernetes/.kube/config'
 
+# Instalación de Calico en el segundo nodo de control-plane
+info "\033[1mInstalando CNI Calico en Control Plane02...\033[0m"
+ssh kubernetes@192.168.100.96 'kubectl apply -f https://docs.projectcalico.org/v3.25/manifests/calico.yaml'
 
+info "\033[4mSubtarea en ejecución: Verificando nodos del Cluster Kubernetes \033[0m"
+su - kubernetes -c 'export KUBECONFIG=$HOME/.kube/config && kubectl get nodes'
 
 echo "=========================================================================================================="
 info "\033[1mTAREA 10: Verificacion de CNI Calico... \033[0m"
@@ -659,11 +668,6 @@ join_node() {
   if [ $? -eq 0 ]; then
     echo "El nodo $NODE_IP se unió al clúster con éxito."
     
-    # Configurar kubeconfig en el nodo actual si es control-plane02
-    if [ "$NODE_IP" == "192.168.100.96" ]; then
-      echo "Configurando kubeconfig en $NODE_IP..."
-      ssh "$SSH_USER@$NODE_IP" "mkdir -p \$HOME/.kube && sudo cp -f /etc/kubernetes/admin.conf \$HOME/.kube/config && sudo chown \$(id -u):\$(id -g) \$HOME/.kube/config"
-    fi
   else
     echo "Error al unir el nodo $NODE_IP."
   fi
