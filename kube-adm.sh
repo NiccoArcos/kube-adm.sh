@@ -96,8 +96,8 @@ fi
 
 info "\033[4mSubtarea en ejecución: Agregado de Hosts e IPs en archivo /etc/hosts\033[0m"
 
-ip_addresses=("192.168.100.52" "192.168.100.53" "192.168.100.93" "192.168.100.96" "192.168.100.97" "192.168.100.98")
-hosts_names=("master" "worker01" "worker02" "master02" "worker02-ext-dc02" "worker01-int-dc02")
+ip_addresses=("192.168.100.52" "192.168.100.53" "192.168.100.93" "192.168.100.96" "192.168.100.97")
+hosts_names=("master" "worker01" "worker02" "worker01-int-dc02" "worker02-ext-dc02")
 
 agregar_hosts() {
     local ip_address="$1"
@@ -574,16 +574,16 @@ su - kubernetes -c '
 '
 
 # Copiar admin.conf a control-plane02 y configurar kubectl
-info "\033[1mConfigurando acceso de kubectl en Control Plane02...\033[0m"
-scp /etc/kubernetes/admin.conf kubernetes@192.168.100.96:/home/kubernetes/.kube/config
-ssh kubernetes@192.168.100.96 'sudo chown $(id -u):$(id -g) /home/kubernetes/.kube/config && export KUBECONFIG=/home/kubernetes/.kube/config'
+#info "\033[1mConfigurando acceso de kubectl en Control Plane02...\033[0m"
+#scp /etc/kubernetes/admin.conf kubernetes@192.168.100.96:/home/kubernetes/.kube/config
+#ssh kubernetes@192.168.100.96 'sudo chown $(id -u):$(id -g) /home/kubernetes/.kube/config && export KUBECONFIG=/home/kubernetes/.kube/config'
 
 # Instalación de Calico en el segundo nodo de control-plane
-info "\033[1mInstalando CNI Calico en Control Plane02...\033[0m"
-ssh kubernetes@192.168.100.96 'kubectl apply -f https://docs.projectcalico.org/v3.25/manifests/calico.yaml'
+#info "\033[1mInstalando CNI Calico en Control Plane02...\033[0m"
+#ssh kubernetes@192.168.100.96 'kubectl apply -f https://docs.projectcalico.org/v3.25/manifests/calico.yaml'
 
-info "\033[4mSubtarea en ejecución: Verificando nodos del Cluster Kubernetes \033[0m"
-su - kubernetes -c 'export KUBECONFIG=$HOME/.kube/config && kubectl get nodes'
+#info "\033[4mSubtarea en ejecución: Verificando nodos del Cluster Kubernetes \033[0m"
+#su - kubernetes -c 'export KUBECONFIG=$HOME/.kube/config && kubectl get nodes'
 
 echo "=========================================================================================================="
 info "\033[1mTAREA 10: Verificacion de CNI Calico... \033[0m"
@@ -622,8 +622,8 @@ info "\033[1mTAREA 11: Union de nodos al Cluster de Kubernetes... \033[0m"
 
 SSH_USER="kubernetes"
 API_SERVER="192.168.100.52:6443"
-CONTROL_NODES=("192.168.100.96")
-WORKER_NODES=("192.168.100.53" "192.168.100.93" "192.168.100.97" "192.168.100.98")
+#CONTROL_NODES=("192.168.100.96")
+WORKER_NODES=("192.168.100.53" "192.168.100.93" "192.168.100.97" "192.168.100.96")
 
 export KUBECONFIG=/home/kubernetes/.kube/config
 
@@ -656,7 +656,7 @@ echo "CERTIFICATE_KEY: $CERTIFICATE_KEY"
 
 # Comando de unión para nodos worker y control plane
 JOIN_CMD_WORKER="kubeadm join $API_SERVER --token $TOKEN --discovery-token-ca-cert-hash sha256:$HASH"
-JOIN_CMD_CONTROL="kubeadm join $API_SERVER --token $TOKEN --discovery-token-ca-cert-hash sha256:$HASH --control-plane --certificate-key $CERTIFICATE_KEY"
+#JOIN_CMD_CONTROL="kubeadm join $API_SERVER --token $TOKEN --discovery-token-ca-cert-hash sha256:$HASH --control-plane --certificate-key $CERTIFICATE_KEY"
 
 # Función para unir nodos usando SSH
 join_node() {

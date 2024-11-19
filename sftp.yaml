@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sftp-services
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sftp-server
+  namespace: sftp-services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sftp-server
+  template:
+    metadata:
+      labels:
+        app: sftp-server
+    spec:
+      containers:
+      - name: sftp-server
+        image: atmoz/sftp:alpine
+        ports:
+        - containerPort: 22
+        volumeMounts:
+        - name: sftp-data
+          mountPath: /home
+        env:
+        - name: SFTP_USERS
+          value: "user:password:1001:1001" # Cambia el usuario y la contraseña
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "250m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+      volumes:
+      - name: sftp-data
+        persistentVolumeClaim:
+          claimName: sftp-data-pvc
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: sftp-data-pv
+  namespace: sftp-services
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /mnt/data/sftp # Cambia este path según tu entorno
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sftp-data-pvc
+  namespace: sftp-services
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sftp-server
+  namespace: sftp-services
+spec:
+  selector:
+    app: sftp-server
+  ports:
+  - protocol: TCP
+    port: 22
+    targetPort: 22
+  type: NodePort # Puedes cambiar a LoadBalancer si usas un proveedor de nube
+
+
+ 

@@ -1,0 +1,28 @@
+#Si al ejecutar en el nodo master kubectl get nodes nos figuran todos los nodos del cluster en ready, pero al consultar los nodos desde los workers nos tira time out
+#Probar:
+
+kubectl config view
+
+#Si estos valores estan en null:
+
+#Validamos los valores de nuestro admin.conf del nodo master:
+kubectl config view --kubeconfig=/etc/kubernetes/admin.conf
+
+
+#Si este archivo esta cargado con info:
+
+scp /etc/kubernetes/admin.conf user@<worker-node-ip>:/home/<user>/.kube/config
+
+#Configuramos las variables de entorno en el worker
+export KUBECONFIG=/home/<user>/.kube/config
+
+
+#Para que el cambio sea permanente
+echo "export KUBECONFIG=/home/<user>/.kube/config" >> ~/.bashrc
+source ~/.bashrc
+
+
+#Verificamos
+kubectl get pods -A
+kubectl get nodes
+
