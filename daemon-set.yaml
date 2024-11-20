@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: sftp-daemonset
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: sftp
+  template:
+    metadata:
+      labels:
+        app: sftp
+    spec:
+      containers:
+      - name: sftp
+        image: atmoz/sftp
+        args: ["kubernetes:nico:1001:1001:/home/kubernetes/var/homes"]
+        ports:
+        - containerPort: 22
+        volumeMounts:
+        - name: sftp-data
+          mountPath: /home/kubernetes/var/homes
+      volumes:
+      - name: sftp-data
+        emptyDir: {}
+
